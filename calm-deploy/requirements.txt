@@ -1,0 +1,6 @@
+streamlit>=1.31.0
+langchain>=1.0.0
+langchain-openai>=1.0.0
+langgraph>=1.0.0
+langgraph-checkpoint>=3.0.0
+openai>=1.0.0
