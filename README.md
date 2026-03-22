@@ -1,12 +1,19 @@
-# 项目结构说明
+---
+title: 平静 - AI助手
+emoji: 🌊
+colorFrom: blue
+colorTo: cyan
+sdk: streamlit
+sdk_version: 1.55.0
+app_file: app.py
+pinned: false
+license: mit
+---
 
-# 本地运行
-## 运行流程
-bash scripts/local_run.sh -m flow
+# 🌊 平静 - AI助手
 
-## 运行节点
-bash scripts/local_run.sh -m node -n node_name
-
-# 启动HTTP服务
-bash scripts/http_run.sh -m http -p 5000
-
+永久免费的AI对话助手，支持：
+- 💬 智能对话
+- 📝 内容创作
+- 🔤 翻译润色
+- 💻 代码帮助
