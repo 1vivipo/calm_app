@@ -46,6 +46,12 @@ from tools.vision_tool import (
     analyze_video,
     describe_image_for_blind
 )
+from tools.image_gen_tool import (
+    generate_image,
+    generate_multiple_images,
+    generate_story_images,
+    save_image_to_storage
+)
 
 LLM_CONFIG = "config/agent_llm_config.json"
 
@@ -90,6 +96,11 @@ ALL_TOOLS = [
     detect_objects,
     analyze_video,
     describe_image_for_blind,
+    # 图片生成工具
+    generate_image,
+    generate_multiple_images,
+    generate_story_images,
+    save_image_to_storage,
     # 搜索工具
     web_search,
 ]
