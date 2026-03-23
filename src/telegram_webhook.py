@@ -1,6 +1,6 @@
 """
 平静AI助手 - Telegram Webhook服务
-Telegram主动推送消息到API，无需持续轮询
+直接使用HTTP调用Telegram API，无需额外依赖
 """
 import os
 import logging
@@ -9,25 +9,48 @@ import json
 import asyncio
 
 from fastapi import Request, Response
-from telegram import Update, Bot
-from telegram.ext import Application
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ==================== 配置 ====================
-TELEGRAM_BOT_TOKEN = "8769055112:AAGcvuRfmZqUV4eerSBcgTB96dsKtxjoe10"
-AGENT_API_BASE = os.getenv("COZE_PROJECT_DOMAIN_DEFAULT", "https://43a018a1-99fd-49f3-a313-a20151d429a3.dev.coze.site")
-RUN_URL = f"{AGENT_API_BASE}/run"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8769055112:AAGcvuRfmZqUV4eerSBcgTB96dsKtxjoe10")
+TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+AGENT_API_BASE = os.getenv("COZE_PROJECT_DOMAIN_DEFAULT", "")
 
-# Bot实例
-bot = Bot(token=TELEGRAM_BOT_TOKEN)
+
+def call_telegram_api(method: str, data: dict = None) -> dict:
+    """调用Telegram API"""
+    url = f"{TELEGRAM_API}/{method}"
+    try:
+        if data:
+            resp = requests.post(url, json=data, timeout=10)
+        else:
+            resp = requests.get(url, timeout=10)
+        return resp.json()
+    except Exception as e:
+        logger.error(f"Telegram API错误: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+def send_message(chat_id: int, text: str) -> bool:
+    """发送消息到Telegram"""
+    result = call_telegram_api("sendMessage", {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML"
+    })
+    return result.get("ok", False)
 
 
 def call_agent(user_id: int, message: str) -> str:
     """调用Agent API"""
+    if not AGENT_API_BASE:
+        return "❌ Agent API未配置"
+    
     session_id = f"telegram_{user_id}"
+    run_url = f"{AGENT_API_BASE}/run"
     
     payload = {
         "type": "query",
@@ -36,7 +59,7 @@ def call_agent(user_id: int, message: str) -> str:
     }
     
     try:
-        response = requests.post(RUN_URL, json=payload, timeout=120)
+        response = requests.post(run_url, json=payload, timeout=120)
         
         if response.status_code != 200:
             return f"❌ API错误: {response.status_code}"
@@ -61,14 +84,13 @@ def call_agent(user_id: int, message: str) -> str:
         return str(data)
         
     except Exception as e:
-        logger.error(f"API错误: {e}")
+        logger.error(f"Agent API错误: {e}")
         return f"❌ 错误: {str(e)}"
 
 
 async def handle_update(update: dict):
     """处理Telegram更新"""
     try:
-        # 解析更新
         if "message" not in update:
             return
         
@@ -77,7 +99,6 @@ async def handle_update(update: dict):
         text = message.get("text", "")
         user_id = message["from"]["id"]
         
-        # 忽略空消息或命令以外的内容
         if not text:
             return
         
@@ -85,7 +106,7 @@ async def handle_update(update: dict):
         
         # 处理命令
         if text == "/start":
-            welcome = """🌊 平静AI助手
+            welcome = """🌊 <b>平静AI助手</b>
 
 我是你的智能对话伙伴！
 
@@ -95,20 +116,20 @@ async def handle_update(update: dict):
 • 💻 代码帮助
 
 直接发消息开始对话！"""
-            await bot.send_message(chat_id=chat_id, text=welcome)
+            send_message(chat_id, welcome)
             return
         
         # 调用Agent
         reply = call_agent(user_id, text)
         
-        # 发送回复
+        # 发送回复（分片处理长消息）
         if len(reply) > 4000:
             for i in range(0, len(reply), 4000):
-                await bot.send_message(chat_id=chat_id, text=reply[i:i+4000])
+                send_message(chat_id, reply[i:i+4000])
         else:
-            await bot.send_message(chat_id=chat_id, text=reply)
+            send_message(chat_id, reply)
         
-        logger.info(f"✅ 回复已发送")
+        logger.info(f"✅ 回复已发送到 {chat_id}")
         
     except Exception as e:
         logger.error(f"处理更新错误: {e}")
@@ -120,8 +141,10 @@ async def telegram_webhook(request: Request):
         update_data = await request.json()
         logger.info(f"收到Webhook: {update_data}")
         
-        # 异步处理
-        asyncio.create_task(handle_update(update_data))
+        # 异步处理（立即返回200给Telegram）
+        import threading
+        thread = threading.Thread(target=lambda: asyncio.run(handle_update(update_data)))
+        thread.start()
         
         return Response(content="OK", status_code=200)
         
@@ -130,18 +153,34 @@ async def telegram_webhook(request: Request):
         return Response(content="Error", status_code=500)
 
 
-async def setup_webhook(webhook_url: str):
-    """设置Webhook"""
-    try:
-        result = await bot.set_webhook(url=webhook_url)
-        logger.info(f"Webhook设置: {result} - {webhook_url}")
-        return result
-    except Exception as e:
-        logger.error(f"设置Webhook失败: {e}")
+def setup_webhook_sync(webhook_url: str) -> bool:
+    """设置Webhook（同步版本）"""
+    result = call_telegram_api("setWebhook", {"url": webhook_url})
+    if result.get("ok"):
+        logger.info(f"✅ Webhook设置成功: {webhook_url}")
+        return True
+    else:
+        logger.error(f"❌ Webhook设置失败: {result}")
         return False
 
 
-def get_webhook_info():
+async def setup_webhook(webhook_url: str):
+    """设置Webhook"""
+    return setup_webhook_sync(webhook_url)
+
+
+def get_webhook_info() -> dict:
     """获取Webhook信息"""
-    import asyncio
-    return asyncio.run(bot.get_webhook_info())
+    return call_telegram_api("getWebhookInfo")
+
+
+# 模块级初始化检查
+def check_telegram_config():
+    """检查Telegram配置"""
+    if not TELEGRAM_BOT_TOKEN:
+        logger.warning("⚠️ TELEGRAM_BOT_TOKEN 未配置")
+        return False
+    return True
+
+
+TELEGRAM_ENABLED = check_telegram_config()
