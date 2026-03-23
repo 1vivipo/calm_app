@@ -11,6 +11,7 @@ from langgraph.graph.message import add_messages
 from langchain_core.messages import AnyMessage
 from coze_coding_utils.runtime_ctx.context import default_headers
 from storage.memory.memory_saver import get_memory_saver
+from tools.search_tool import web_search  # 导入联网搜索工具
 
 LLM_CONFIG = "config/agent_llm_config.json"
 
@@ -55,11 +56,11 @@ def build_agent(ctx=None):
         default_headers=default_headers(ctx) if ctx else {}
     )
 
-    # 创建并返回Agent
+    # 创建并返回Agent（现在有联网搜索工具了！）
     return create_agent(
         model=llm,
         system_prompt=cfg.get("sp", "你是平静AI助手，请帮助用户解决问题。"),
-        tools=[],
+        tools=[web_search],  # 添加联网搜索工具
         checkpointer=get_memory_saver(),
         state_schema=AgentState,
     )
