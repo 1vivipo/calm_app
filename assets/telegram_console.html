@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>平静AI - Telegram Bot 控制台</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .status {
+            padding: 10px 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .status.running { background: #d4edda; color: #155724; }
+        .status.stopped { background: #f8d7da; color: #721c24; }
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 5px;
+            transition: transform 0.2s;
+        }
+        .btn:hover { transform: scale(1.05); }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .chat-container {
+            border: 1px solid #ddd;
+            border-radius: 15px;
+            height: 400px;
+            overflow-y: auto;
+            padding: 15px;
+            margin: 20px 0;
+            background: #f8f9fa;
+        }
+        .message {
+            padding: 10px 15px;
+            border-radius: 15px;
+            margin: 10px 0;
+            max-width: 80%;
+        }
+        .message.user {
+            background: #667eea;
+            color: white;
+            margin-left: auto;
+        }
+        .message.bot {
+            background: white;
+            border: 1px solid #ddd;
+        }
+        .message .time {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+        .input-area input {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+        }
+        .input-area button {
+            padding: 15px 25px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .info code {
+            background: #ddd;
+            padding: 2px 8px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌊 平静AI Bot</h1>
+        <p style="color:#666;margin-bottom:20px">Telegram Bot 控制台</p>
+        
+        <div id="status" class="status stopped">⏹️ 已停止</div>
+        
+        <div class="info">
+            <strong>📋 使用说明：</strong><br>
+            1. 点击「启动Bot」按钮开始监听Telegram消息<br>
+            2. 在Telegram中发送消息给你的Bot<br>
+            3. Bot会自动回复（保持此页面打开）<br>
+            <br>
+            <strong>Bot地址：</strong> <code>@agent_calm_pro_bot</code>
+        </div>
+        
+        <div style="margin: 20px 0;">
+            <button class="btn btn-primary" onclick="startBot()">▶️ 启动Bot</button>
+            <button class="btn btn-danger" onclick="stopBot()">⏹️ 停止Bot</button>
+        </div>
+        
+        <h3>💬 消息日志</h3>
+        <div id="chat" class="chat-container"></div>
+        
+        <div class="input-area">
+            <input type="text" id="userInput" placeholder="输入消息测试..." onkeypress="if(event.key==='Enter')sendMessage()">
+            <button onclick="sendMessage()">发送</button>
+        </div>
+    </div>
+
+    <script>
+        const BOT_TOKEN = '8769055112:AAGcvuRfmZqUV4eerSBcgTB96dsKtxjoe10';
+        const AGENT_API = 'https://43a018a1-99fd-49f3-a313-a20151d429a3.dev.coze.site/run';
+        
+        let isRunning = false;
+        let pollInterval = null;
+        let lastUpdateId = 0;
+
+        function log(text, isUser = false) {
+            const chat = document.getElementById('chat');
+            const time = new Date().toLocaleTimeString();
+            chat.innerHTML += `
+                <div class="message ${isUser ? 'user' : 'bot'}">
+                    ${text}
+                    <div class="time">${time}</div>
+                </div>
+            `;
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        async function startBot() {
+            if (isRunning) return;
+            
+            isRunning = true;
+            document.getElementById('status').className = 'status running';
+            document.getElementById('status').textContent = '▶️ 运行中...';
+            
+            log('✅ Bot 已启动，正在监听消息...');
+            
+            // 删除webhook，使用轮询模式
+            try {
+                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/deleteWebhook`);
+            } catch(e) {}
+            
+            // 开始轮询
+            pollInterval = setInterval(pollUpdates, 2000);
+        }
+
+        function stopBot() {
+            isRunning = false;
+            document.getElementById('status').className = 'status stopped';
+            document.getElementById('status').textContent = '⏹️ 已停止';
+            
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+            
+            log('⏹️ Bot 已停止');
+        }
+
+        async function pollUpdates() {
+            if (!isRunning) return;
+            
+            try {
+                const resp = await fetch(
+                    `https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?offset=${lastUpdateId + 1}&timeout=1`
+                );
+                const data = await resp.json();
+                
+                if (data.ok && data.result.length > 0) {
+                    for (const update of data.result) {
+                        lastUpdateId = update.update_id;
+                        handleMessage(update);
+                    }
+                }
+            } catch(e) {
+                console.error('轮询错误:', e);
+            }
+        }
+
+        async function handleMessage(update) {
+            if (!update.message || !update.message.text) return;
+            
+            const chatId = update.message.chat.id;
+            const userId = update.message.from.id;
+            const text = update.message.text;
+            const userName = update.message.from.first_name;
+            
+            log(`📩 ${userName}: ${text}`, true);
+            
+            // 处理命令
+            if (text === '/start') {
+                const welcome = `🌊 平静AI助手\n\n我是你的智能对话伙伴！\n\n• 💬 回答问题\n• 📝 内容创作\n• 🔤 翻译润色\n• 💻 代码帮助\n\n直接发消息开始对话！`;
+                await sendTelegramMessage(chatId, welcome);
+                log(`🤖 Bot: 欢迎消息已发送`);
+                return;
+            }
+            
+            // 调用Agent
+            try {
+                const resp = await fetch(AGENT_API, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: 'query',
+                        session_id: `telegram_${userId}`,
+                        message: text
+                    })
+                });
+                
+                const data = await resp.json();
+                let reply = '抱歉，处理失败';
+                
+                if (data.messages && data.messages.length > 0) {
+                    const lastMsg = data.messages[data.messages.length - 1];
+                    if (typeof lastMsg.content === 'string') {
+                        reply = lastMsg.content;
+                    } else if (Array.isArray(lastMsg.content)) {
+                        reply = lastMsg.content
+                            .filter(item => item.type === 'text')
+                            .map(item => item.text)
+                            .join('\n');
+                    }
+                }
+                
+                await sendTelegramMessage(chatId, reply);
+                log(`🤖 Bot: ${reply.substring(0, 100)}${reply.length > 100 ? '...' : ''}`);
+                
+            } catch(e) {
+                log(`❌ 错误: ${e.message}`);
+            }
+        }
+
+        async function sendTelegramMessage(chatId, text) {
+            // 分片发送长消息
+            const chunks = text.match(/.{1,4000}/g) || [text];
+            for (const chunk of chunks) {
+                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: chatId,
+                        text: chunk,
+                        parse_mode: 'HTML'
+                    })
+                });
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const text = input.value.trim();
+            if (!text) return;
+            
+            input.value = '';
+            log(`👤 你: ${text}`, true);
+            
+            try {
+                const resp = await fetch(AGENT_API, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: 'query',
+                        session_id: 'web_test',
+                        message: text
+                    })
+                });
+                
+                const data = await resp.json();
+                let reply = '处理失败';
+                
+                if (data.messages && data.messages.length > 0) {
+                    const lastMsg = data.messages[data.messages.length - 1];
+                    if (typeof lastMsg.content === 'string') {
+                        reply = lastMsg.content;
+                    } else if (Array.isArray(lastMsg.content)) {
+                        reply = lastMsg.content
+                            .filter(item => item.type === 'text')
+                            .map(item => item.text)
+                            .join('\n');
+                    }
+                }
+                
+                log(`🤖 Bot: ${reply}`);
+                
+            } catch(e) {
+                log(`❌ 错误: ${e.message}`);
+            }
+        }
+    </script>
+</body>
+</html>
