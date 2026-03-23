@@ -256,17 +256,22 @@ if TELEGRAM_ENABLED:
 
     @app.on_event("startup")
     async def startup_event():
-        """服务启动时设置Telegram Webhook"""
+        """服务启动时异步设置Telegram Webhook（非阻塞）"""
         import os
         domain = os.getenv("COZE_PROJECT_DOMAIN_DEFAULT", "")
         if domain:
             webhook_url = f"{domain}/telegram/webhook"
-            logger.info(f"🔗 设置Telegram Webhook: {webhook_url}")
-            try:
-                await setup_webhook(webhook_url)
-                logger.info("✅ Telegram Webhook设置成功")
-            except Exception as e:
-                logger.warning(f"⚠️ Telegram Webhook设置失败(可能是网络问题): {e}")
+            logger.info(f"🔗 将在后台设置Telegram Webhook: {webhook_url}")
+            # 非阻塞方式设置webhook，避免启动超时
+            async def setup_webhook_background():
+                try:
+                    await asyncio.sleep(2)  # 等待服务完全启动
+                    await setup_webhook(webhook_url)
+                    logger.info("✅ Telegram Webhook设置成功")
+                except Exception as e:
+                    logger.warning(f"⚠️ Telegram Webhook设置失败(可能是网络问题): {e}")
+            
+            asyncio.create_task(setup_webhook_background())
         else:
             logger.warning("⚠️ 未找到项目域名，跳过Webhook设置")
 
