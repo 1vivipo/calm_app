@@ -501,6 +501,16 @@ def parse_input(input_str: str) -> Dict[str, Any]:
         # If not valid JSON, treat as plain text
         return {"text": input_str}
 
+def start_telegram_bot():
+    """启动Telegram Bot服务"""
+    logger.info("🚀 启动Telegram Bot服务...")
+    try:
+        from telegram_service import run_telegram_bot
+        run_telegram_bot()
+    except Exception as e:
+        logger.error(f"Telegram Bot启动失败: {e}")
+        raise
+
 def start_http_server(port):
     workers = 1
     reload = False
@@ -514,6 +524,9 @@ if __name__ == "__main__":
     args = parse_args()
     if args.m == "http":
         start_http_server(args.p)
+    elif args.m == "telegram":
+        # 启动Telegram Bot
+        start_telegram_bot()
     elif args.m == "flow":
         payload = parse_input(args.i)
         result = asyncio.run(service.run(payload))
