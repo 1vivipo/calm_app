@@ -239,6 +239,41 @@ app = FastAPI()
 # OpenAI 兼容接口处理器
 openai_handler = OpenAIChatHandler(service)
 
+# ==================== Telegram Webhook ====================
+from telegram_webhook import telegram_webhook, setup_webhook
+from fastapi.responses import Response
+
+@app.post("/telegram/webhook")
+async def handle_telegram_webhook(request: Request):
+    """Telegram Webhook端点 - Telegram主动推送消息"""
+    return await telegram_webhook(request)
+
+@app.on_event("startup")
+async def startup_event():
+    """服务启动时设置Telegram Webhook"""
+    import os
+    domain = os.getenv("COZE_PROJECT_DOMAIN_DEFAULT", "")
+    if domain:
+        webhook_url = f"{domain}/telegram/webhook"
+        logger.info(f"🔗 设置Telegram Webhook: {webhook_url}")
+        try:
+            await setup_webhook(webhook_url)
+            logger.info("✅ Telegram Webhook设置成功")
+        except Exception as e:
+            logger.warning(f"⚠️ Telegram Webhook设置失败(可能是网络问题): {e}")
+    else:
+        logger.warning("⚠️ 未找到项目域名，跳过Webhook设置")
+
+@app.get("/telegram/status")
+async def telegram_status():
+    """查看Telegram Bot状态"""
+    from telegram_webhook import get_webhook_info
+    try:
+        info = get_webhook_info()
+        return {"status": "ok", "webhook_info": str(info)}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 
 HEADER_X_RUN_ID = "x-run-id"
 @app.post("/run")
