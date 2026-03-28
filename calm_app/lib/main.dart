@@ -989,15 +989,15 @@ class _ChatPageState extends State<ChatPage> {
                                     child: CircularProgressIndicator(),
                                   ),
                                 ),
-                              errorWidget: (context, url, error) => Container(
-                                width: 200,
-                                height: 100,
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.errorContainer,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
+                                errorWidget: (context, url, error) => Container(
+                                  width: 200,
+                                  height: 100,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.errorContainer,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Icon(Icons.broken_image, 
                                       color: Theme.of(context).colorScheme.onErrorContainer),
