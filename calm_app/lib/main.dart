@@ -75,17 +75,71 @@ class _ChatPageState extends State<ChatPage> {
   File? _selectedImage;
   String? _selectedImageUrl;
   
+  // 会话管理
+  String _sessionId = '';
+  int _chatIndex = 1; // 对话计数
+  
   // Agent API地址
   static const String _apiUrl = 'https://43a018a1-99fd-49f3-a313-a20151d429a3.dev.coze.site/run';
-
+  
   @override
   void initState() {
     super.initState();
+    _initSession();
     _requestPermissions();
   }
+  
+  // 初始化会话
+  void _initSession() {
+    _sessionId = 'session_${DateTime.now().millisecondsSinceEpoch}';
+  }
+  
+  // 开始新对话
+  void _startNewChat() {
+    if (_messages.isNotEmpty) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('新对话'),
+          content: const Text('确定要开始新对话吗？当前对话将被清空。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                _doStartNewChat();
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('开始新对话'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      _doStartNewChat();
+    }
+  }
+  
+  void _doStartNewChat() {
+    setState(() {
+      _messages.clear();
+      _selectedImage = null;
+      _selectedImageUrl = null;
+      _initSession();
+      _chatIndex++;
+    });
+    _showSnackBar('已开始新对话 #$_chatIndex');
+  }
 
+  // 发送消息
   Future<void> _requestPermissions() async {
-    // Android 13+ 使用新的权限模型
     if (Platform.isAndroid) {
       final status = await Permission.photos.request();
       if (!status.isGranted) {
@@ -93,7 +147,7 @@ class _ChatPageState extends State<ChatPage> {
       }
     }
   }
-
+  
   // 发送消息
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
@@ -144,10 +198,10 @@ class _ChatPageState extends State<ChatPage> {
   Future<String> _callAgent(String message, File? imageFile) async {
     final uri = Uri.parse(_apiUrl);
     
-    // 构建请求体 - 包含模型选择
+    // 构建请求体 - 包含模型选择和会话ID
     final body = jsonEncode({
       'type': 'query',
-      'session_id': 'app_${DateTime.now().millisecondsSinceEpoch}',
+      'session_id': _sessionId, // 使用当前会话ID
       'message': message,
       'model': _selectedModel.modelId, // 传递选择的模型
     });
@@ -604,6 +658,12 @@ class _ChatPageState extends State<ChatPage> {
           ),
         ),
         actions: [
+          // 新对话按钮
+          IconButton(
+            icon: const Icon(Icons.add_comment_outlined),
+            onPressed: _startNewChat,
+            tooltip: '新对话',
+          ),
           IconButton(
             icon: const Icon(Icons.tune),
             onPressed: _showModelSelector,
