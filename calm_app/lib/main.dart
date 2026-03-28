@@ -203,18 +203,38 @@ class _ChatPageState extends State<ChatPage> {
   Future<String> _callAgent(String message, File? imageFile) async {
     final uri = Uri.parse(_apiUrl);
     
+    // 构建prompt数组
+    final prompt = <Map<String, dynamic>>[];
+    
+    // 构建消息文本
+    String messageText = message;
+    
+    // 如果有图片，转成Base64并添加到消息中
+    if (imageFile != null) {
+      try {
+        final bytes = await imageFile.readAsBytes();
+        final base64Image = base64Encode(bytes);
+        // 使用特殊标记让后端识别图片
+        // 格式: [IMAGE:base64数据]
+        messageText = '$message\n\n[IMAGE:data:image/jpeg;base64,$base64Image]';
+      } catch (e) {
+        debugPrint('图片转Base64失败: $e');
+      }
+    }
+    
+    // 添加文字
+    if (messageText.isNotEmpty) {
+      prompt.add({
+        'type': 'text',
+        'content': {'text': messageText},
+      });
+    }
+    
     // 构建正确的Coze平台请求格式
     final body = jsonEncode({
       'content': {
         'query': {
-          'prompt': [
-            {
-              'type': 'text',
-              'content': {
-                'text': message,
-              },
-            },
-          ],
+          'prompt': prompt,
         },
       },
       'type': 'query',
@@ -397,9 +417,10 @@ class _ChatPageState extends State<ChatPage> {
   List<String> _extractImageUrls(String text) {
     final urls = <String>[];
     
-    // 1. 匹配完整HTTP URL
+    // 1. 匹配完整HTTP URL（带图片扩展名，可选查询参数）
+    // 支持格式: https://xxx.jpeg 或 https://xxx.jpeg?sign=xxx
     final httpRegex = RegExp(
-      r'https?://[^\s<>"{}|\\^`\[\]]+\.(?:jpg|jpeg|png|gif|webp)',
+      r'https?://[^\s<>"{}|\\^`\[\]]+?\.(?:jpg|jpeg|png|gif|webp|bmp)(?:\?[^\s<>"{}|\\^`\[\]]*)?',
       caseSensitive: false,
     );
     urls.addAll(httpRegex.allMatches(text).map((m) => m.group(0)!));
