@@ -976,18 +976,19 @@ class _ChatPageState extends State<ChatPage> {
                           onLongPress: () => _downloadImage(url),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: CachedNetworkImage(
-                              imageUrl: url,
-                              maxWidth: 250,
-                              fit: BoxFit.cover,
-                              placeholder: (context, url) => Container(
-                                width: 200,
-                                height: 150,
-                                color: Theme.of(context).colorScheme.surfaceContainerHigh,
-                                child: const Center(
-                                  child: CircularProgressIndicator(),
+                            child: SizedBox(
+                              width: 250,
+                              child: CachedNetworkImage(
+                                imageUrl: url,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => Container(
+                                  width: 200,
+                                  height: 150,
+                                  color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                                  child: const Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
                                 ),
-                              ),
                               errorWidget: (context, url, error) => Container(
                                 width: 200,
                                 height: 100,
