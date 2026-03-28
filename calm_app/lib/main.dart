@@ -83,10 +83,9 @@ class _ChatPageState extends State<ChatPage> {
   // 获取方式：部署页面 -> API Token -> 生成Token
   String _apiToken = ''; // 用户需要设置自己的Token
   
-  // Agent API地址 - 使用部署后的地址
-  // /run = 同步接口（等待完整响应）
-  // /stream_run = 流式接口（实时显示）
-  static const String _apiUrl = 'https://66mwfm39tp.coze.site/run';
+  // API配置
+  static const String _apiUrl = 'https://66mwfm39tp.coze.site/stream_run';
+  static const String _projectId = '7619192361578463238';
   
   @override
   void initState() {
@@ -204,12 +203,23 @@ class _ChatPageState extends State<ChatPage> {
   Future<String> _callAgent(String message, File? imageFile) async {
     final uri = Uri.parse(_apiUrl);
     
-    // 构建请求体 - 包含模型选择和会话ID
+    // 构建正确的Coze平台请求格式
     final body = jsonEncode({
+      'content': {
+        'query': {
+          'prompt': [
+            {
+              'type': 'text',
+              'content': {
+                'text': message,
+              },
+            },
+          ],
+        },
+      },
       'type': 'query',
-      'session_id': _sessionId, // 使用当前会话ID
-      'message': message,
-      'model': _selectedModel.modelId, // 传递选择的模型
+      'session_id': _sessionId,
+      'project_id': _projectId,
     });
 
     // 构建请求头
@@ -224,35 +234,50 @@ class _ChatPageState extends State<ChatPage> {
       uri,
       headers: headers,
       body: body,
-    ).timeout(Duration(seconds: _selectedModel.timeoutSeconds));
+    ).timeout(const Duration(seconds: 120));
 
     if (response.statusCode == 401) {
       throw Exception('需要API Token，请点击设置按钮配置');
     }
 
     if (response.statusCode == 200) {
-      final data = jsonDecode(utf8.decode(response.bodyBytes));
-      
-      // 解析多种响应格式
-      if (data['messages'] != null && data['messages'] is List) {
-        final messages = data['messages'] as List;
-        for (final msg in messages.reversed) {
-          final content = msg['content'];
-          if (content != null && content.toString().isNotEmpty && msg['type'] != 'human') {
-            return content.toString();
-          }
-        }
-      }
-      
-      if (data['output'] != null) return data['output'].toString();
-      if (data['response'] != null) return data['response'].toString();
-      if (data['result'] != null) return data['result'].toString();
-      if (data['content'] != null) return data['content'].toString();
-      
-      return '收到响应: ${jsonEncode(data)}';
+      // 解析SSE流式响应
+      final responseText = utf8.decode(response.bodyBytes);
+      return _parseSSEResponse(responseText);
     } else {
       throw Exception('HTTP ${response.statusCode}: ${response.body}');
     }
+  }
+
+  // 解析SSE响应
+  String _parseSSEResponse(String responseText) {
+    final lines = responseText.split('\n');
+    final answerParts = <String>[];
+    
+    for (final line in lines) {
+      if (line.startsWith('data: ')) {
+        try {
+          final jsonStr = line.substring(6);
+          final data = jsonDecode(jsonStr);
+          
+          // 提取answer内容
+          if (data['type'] == 'answer' && data['content'] != null) {
+            final answer = data['content']['answer'];
+            if (answer != null) {
+              answerParts.add(answer.toString());
+            }
+          }
+        } catch (e) {
+          // 忽略解析错误
+        }
+      }
+    }
+    
+    if (answerParts.isNotEmpty) {
+      return answerParts.join('');
+    }
+    
+    return '响应解析失败，原始数据: ${responseText.substring(0, responseText.length > 200 ? 200 : responseText.length)}...';
   }
 
   // 选择图片
@@ -368,13 +393,36 @@ class _ChatPageState extends State<ChatPage> {
            lower.startsWith('http');
   }
 
-  // 从文本中提取图片URL
+  // 从文本中提取图片URL（支持相对路径和Markdown格式）
   List<String> _extractImageUrls(String text) {
-    final regex = RegExp(
+    final urls = <String>[];
+    
+    // 1. 匹配完整HTTP URL
+    final httpRegex = RegExp(
       r'https?://[^\s<>"{}|\\^`\[\]]+\.(?:jpg|jpeg|png|gif|webp)',
       caseSensitive: false,
     );
-    return regex.allMatches(text).map((m) => m.group(0)!).toList();
+    urls.addAll(httpRegex.allMatches(text).map((m) => m.group(0)!));
+    
+    // 2. 匹配Coze平台图片URL（带sign参数的相对路径）
+    // 格式: ?sign=xxx 或 /api/xxx?sign=xxx
+    final cozeRegex = RegExp(
+      r'(?:/api/[^\s<>"{}|\\^`\[\]]*)?\?sign=[^\s<>"{}|\\^`\[\]]+',
+    );
+    for (final match in cozeRegex.allMatches(text)) {
+      final relativeUrl = match.group(0)!;
+      // 转换成完整URL
+      final fullUrl = 'https://66mwfm39tp.coze.site$relativeUrl';
+      urls.add(fullUrl);
+    }
+    
+    // 3. 匹配Markdown图片语法 ![描述](url)
+    final mdRegex = RegExp(
+      r'!\[.*?\]\((https?://[^\s<>"{}|\\^`\[\)]+)\)',
+    );
+    urls.addAll(mdRegex.allMatches(text).map((m) => m.group(1)!));
+    
+    return urls.toSet().toList(); // 去重
   }
 
   // 从文本中提取所有URL
@@ -469,25 +517,49 @@ class _ChatPageState extends State<ChatPage> {
     try {
       _showSnackBar('正在下载图片...');
       
+      // 请求存储权限
+      if (Platform.isAndroid) {
+        final status = await Permission.storage.request();
+        if (!status.isGranted) {
+          // Android 13+ 使用不同的权限
+          final photosStatus = await Permission.photos.request();
+          if (!photosStatus.isGranted) {
+            _showSnackBar('需要存储权限才能下载图片');
+            return;
+          }
+        }
+      }
+      
       final response = await http.get(Uri.parse(url));
       
       if (response.statusCode == 200) {
         // 获取保存目录
-        final directory = Platform.isAndroid
-            ? Directory('/storage/emulated/0/Download')
-            : await getApplicationDocumentsDirectory();
+        Directory? directory;
+        if (Platform.isAndroid) {
+          // 优先使用Download目录
+          directory = Directory('/storage/emulated/0/Download');
+          if (!await directory.exists()) {
+            directory = await getExternalStorageDirectory();
+          }
+        } else {
+          directory = await getApplicationDocumentsDirectory();
+        }
+        
+        if (directory == null) {
+          throw Exception('无法获取存储目录');
+        }
         
         final fileName = 'calm_ai_${DateTime.now().millisecondsSinceEpoch}.jpg';
         final file = File('${directory.path}/$fileName');
         
         await file.writeAsBytes(response.bodyBytes);
         
-        _showSnackBar('图片已保存到: ${file.path}');
+        _showSnackBar('✅ 图片已保存: ${file.path}');
       } else {
         throw Exception('下载失败: HTTP ${response.statusCode}');
       }
     } catch (e) {
-      _showSnackBar('下载图片失败: $e');
+      _showSnackBar('下载失败: $e');
     }
   }
 
@@ -631,62 +703,84 @@ class _ChatPageState extends State<ChatPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                '选择模型',
+                '当前模型',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
-              const SizedBox(height: 8),
-              ...ModelType.values.map((model) {
-                final isSelected = model == _selectedModel;
-                return Container(
-                  margin: const EdgeInsets.symmetric(vertical: 4),
-                  decoration: BoxDecoration(
-                    color: isSelected 
-                        ? Theme.of(context).colorScheme.primaryContainer
-                        : null,
-                    borderRadius: BorderRadius.circular(12),
-                    border: isSelected
-                        ? Border.all(
-                            color: Theme.of(context).colorScheme.primary,
-                            width: 2,
-                          )
-                        : null,
-                  ),
-                  child: ListTile(
-                    leading: Container(
-                      width: 40,
-                      height: 40,
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
                       decoration: BoxDecoration(
-                        color: isSelected 
-                            ? Theme.of(context).colorScheme.primary
-                            : Theme.of(context).colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(10),
+                        color: Theme.of(context).colorScheme.primary,
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
-                        model.icon,
-                        color: isSelected 
-                            ? Theme.of(context).colorScheme.onPrimary
-                            : null,
+                        ModelType.agent.icon,
+                        color: Theme.of(context).colorScheme.onPrimary,
+                        size: 24,
                       ),
                     ),
-                    title: Text(
-                      model.label,
-                      style: TextStyle(
-                        fontWeight: isSelected ? FontWeight.bold : null,
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            ModelType.agent.label,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            ModelType.agent.description,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    subtitle: Text(model.description),
-                    trailing: isSelected 
-                        ? Icon(Icons.check_circle, 
-                            color: Theme.of(context).colorScheme.primary)
-                        : null,
-                    onTap: () {
-                      setState(() => _selectedModel = model);
-                      Navigator.pop(context);
-                      _showSnackBar('已切换到 ${model.label}');
-                    },
-                  ),
-                );
-              }),
+                    Icon(Icons.check_circle, 
+                      color: Theme.of(context).colorScheme.primary),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, 
+                      size: 16, 
+                      color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '当前使用Agent专家模式，支持画图、搜索、代码等工具',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
