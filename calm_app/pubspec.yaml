@@ -20,7 +20,6 @@ dependencies:
   
   # 文件保存
   path_provider: ^2.1.2
-  gallery_saver: ^2.3.3
   
   # 分享
   share_plus: ^7.2.1
@@ -28,13 +27,8 @@ dependencies:
   # 打开链接
   url_launcher: ^6.2.4
   
-  # 复制到剪贴板（已内置，无需添加）
-  
   # 权限请求
   permission_handler: ^11.3.0
-  
-  # MIME类型检测
-  mime: ^1.0.5
 
 dev_dependencies:
   flutter_test:
