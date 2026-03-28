@@ -79,8 +79,14 @@ class _ChatPageState extends State<ChatPage> {
   String _sessionId = '';
   int _chatIndex = 1; // 对话计数
   
-  // Agent API地址
-  static const String _apiUrl = 'https://43a018a1-99fd-49f3-a313-a20151d429a3.dev.coze.site/run';
+  // API Token - 需要在Coze平台生成
+  // 获取方式：部署页面 -> API Token -> 生成Token
+  String _apiToken = ''; // 用户需要设置自己的Token
+  
+  // Agent API地址 - 使用部署后的地址
+  // /run = 同步接口（等待完整响应）
+  // /stream_run = 流式接口（实时显示）
+  static const String _apiUrl = 'https://66mwfm39tp.coze.site/run';
   
   @override
   void initState() {
@@ -206,11 +212,23 @@ class _ChatPageState extends State<ChatPage> {
       'model': _selectedModel.modelId, // 传递选择的模型
     });
 
+    // 构建请求头
+    final headers = {
+      'Content-Type': 'application/json',
+    };
+    if (_apiToken.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $_apiToken';
+    }
+
     final response = await http.post(
       uri,
-      headers: {'Content-Type': 'application/json'},
+      headers: headers,
       body: body,
     ).timeout(Duration(seconds: _selectedModel.timeoutSeconds));
+
+    if (response.statusCode == 401) {
+      throw Exception('需要API Token，请点击设置按钮配置');
+    }
 
     if (response.statusCode == 200) {
       final data = jsonDecode(utf8.decode(response.bodyBytes));
@@ -540,6 +558,69 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  // 显示设置对话框
+  void _showSettingsDialog() {
+    final tokenController = TextEditingController(text: _apiToken);
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('API设置'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'API Token',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: tokenController,
+              decoration: const InputDecoration(
+                hintText: '请输入API Token',
+                border: OutlineInputBorder(),
+                helperText: '在Coze部署页面 -> API Token 获取',
+              ),
+              obscureText: true,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '如何获取Token？',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              '1. 打开Coze平台部署页面\n'
+              '2. 点击右上角"API Token"按钮\n'
+              '3. 生成并复制Token\n'
+              '4. 粘贴到上方输入框',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _apiToken = tokenController.text.trim();
+              });
+              Navigator.pop(context);
+              _showSnackBar(_apiToken.isNotEmpty 
+                ? 'API Token已保存' 
+                : 'API Token已清空');
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showModelSelector() {
     showModalBottomSheet(
       context: context,
@@ -669,6 +750,15 @@ class _ChatPageState extends State<ChatPage> {
             onPressed: _showModelSelector,
             tooltip: '选择模型',
           ),
+          // 设置按钮
+          IconButton(
+            icon: Icon(
+              Icons.settings,
+              color: _apiToken.isEmpty ? Colors.red : null,
+            ),
+            onPressed: _showSettingsDialog,
+            tooltip: _apiToken.isEmpty ? '请设置API Token' : '设置',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _clearChat,
@@ -752,6 +842,32 @@ class _ChatPageState extends State<ChatPage> {
                 ],
               ),
             ),
+            // API Token提示
+            if (_apiToken.isEmpty) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.warning, 
+                      size: 20, 
+                      color: Theme.of(context).colorScheme.error),
+                    const SizedBox(width: 8),
+                    Text(
+                      '请点击右上角设置按钮配置API Token',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onErrorContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
