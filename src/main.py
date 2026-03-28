@@ -287,6 +287,12 @@ if TELEGRAM_ENABLED:
 
 
 HEADER_X_RUN_ID = "x-run-id"
+def _build_agent_with_model(model: Optional[str], ctx=None):
+    """根据model参数动态构建Agent"""
+    from agents.agent import build_agent
+    return build_agent(ctx=ctx, model=model)
+
+
 @app.post("/run")
 async def http_run(request: Request) -> Dict[str, Any]:
     global result
@@ -315,6 +321,13 @@ async def http_run(request: Request) -> Dict[str, Any]:
 
     try:
         payload = await request.json()
+        
+        # 动态模型选择：从payload中读取model参数
+        model = payload.pop("model", None)  # 移除model参数，避免传给agent
+        if model:
+            logger.info(f"Dynamic model selection: {model}")
+            # 使用指定的模型构建Agent
+            service._graph = _build_agent_with_model(model, ctx)
 
         # 创建任务并记录 - 这是关键，让我们可以通过run_id取消任务
         task = asyncio.create_task(service.run(payload, ctx))
