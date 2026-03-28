@@ -969,50 +969,52 @@ class _ChatPageState extends State<ChatPage> {
                     // 显示网络图片
                     if (hasImages) ...[
                       const SizedBox(height: 8),
-                      ...imageUrls.map((url) => Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: GestureDetector(
-                          onTap: () => _showImagePreview(url),
-                          onLongPress: () => _downloadImage(url),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: SizedBox(
-                              width: 250,
-                              child: CachedNetworkImage(
-                                imageUrl: url,
-                                fit: BoxFit.cover,
-                                placeholder: (context, url) => Container(
-                                  width: 200,
-                                  height: 150,
-                                  color: Theme.of(context).colorScheme.surfaceContainerHigh,
-                                  child: const Center(
-                                    child: CircularProgressIndicator(),
-                                  ),
-                                ),
-                                errorWidget: (context, url, error) => Container(
-                                  width: 200,
-                                  height: 100,
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.errorContainer,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.broken_image, 
-                                      color: Theme.of(context).colorScheme.onErrorContainer),
-                                    const SizedBox(height: 4),
-                                    TextButton(
-                                      onPressed: () => _launchUrl(url),
-                                      child: const Text('打开链接'),
+                      for (var url in imageUrls)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: GestureDetector(
+                            onTap: () => _showImagePreview(url),
+                            onLongPress: () => _downloadImage(url),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: SizedBox(
+                                width: 250,
+                                child: CachedNetworkImage(
+                                  imageUrl: url,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) => Container(
+                                    width: 200,
+                                    height: 150,
+                                    color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                                    child: const Center(
+                                      child: CircularProgressIndicator(),
                                     ),
-                                  ],
+                                  ),
+                                  errorWidget: (context, url, error) => Container(
+                                    width: 200,
+                                    height: 100,
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).colorScheme.errorContainer,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.broken_image, 
+                                          color: Theme.of(context).colorScheme.onErrorContainer),
+                                        const SizedBox(height: 4),
+                                        TextButton(
+                                          onPressed: () => _launchUrl(url),
+                                          child: const Text('打开链接'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      )),
                     ],
                     // 操作提示
                     if (!msg.isUser && !msg.isError) ...[
